@@ -1,148 +1,167 @@
+import numpy as np
+import pandas as pd
 import streamlit as st
-import random
-import time
 
+# Page Configuration
 st.set_page_config(
-    page_title="Genetic Algorithm"
+    page_title="Genetic Algorithm - TV Scheduling", layout="wide"
 )
 
-st.header("Genetic Algorithm", divider="gray")
+st.title("📺 TV Program Scheduling using Genetic Algorithm")
+st.write(
+    "Adjust parameters on the sidebar and run the Genetic Algorithm to optimize the TV schedule."
+)
 
-#POP_SIZE: Number of Chromosomes in our list.
-POP_SIZE = 500
-#POP_SIZE = st.number_input("Enter population size")
+# -----------------------------------------------------------------------------
+# 1. SIDEBAR PARAMETERS (Assignment Requirements)
+# -----------------------------------------------------------------------------
+st.sidebar.header("Genetic Algorithm Parameters")
 
-#MUT_RATE: Rate at which our string will be changed.
-#MUT_RATE = 0.2
+# Crossover Rate: Default 0.8, Range 0.0 to 0.95
+co_r = st.sidebar.slider(
+    label="Crossover Rate (CO_R)",
+    min_value=0.0,
+    max_value=0.95,
+    value=0.80,
+    step=0.05,
+)
 
-#TARGET: Our goal.
-#TARGET = 'fakhitah'
-    
+# Mutation Rate: Default 0.02 (UI bounds 0.01 to 0.05 per assignment spec)
+mut_r = st.sidebar.slider(
+    label="Mutation Rate (MUT_R)",
+    min_value=0.01,
+    max_value=0.05,
+    value=0.02,
+    step=0.01,
+)
 
-#GENES: Options from which our population would be created.
-GENES = ' abcdefghijklmnopqrstuvwxyz'
-
-#initialization
-
-def initialize_pop(TARGET):
-  population = list()
-  tar_len = len(TARGET)
-
-  for i in range(POP_SIZE):
-      temp = list()
-      for j in range(tar_len):
-          temp.append(random.choice(GENES))
-      population.append(temp)
-
-  return population
-
-#fitness calculation
-#0 fitness means target found
-
-def fitness_cal(TARGET, chromo_from_pop):
-  difference = 0
-  for tar_char, chromo_char in zip(TARGET, chromo_from_pop):
-      if tar_char != chromo_char:
-          difference+=1
-  return [chromo_from_pop, difference]
-
-#selection
-#returns top 50% population sorted according to fitness
-
-def selection(population, TARGET):
-  sorted_chromo_pop = sorted(population, key= lambda x: x[1])
-  return sorted_chromo_pop[:int(0.5*POP_SIZE)]
-
-#crossover
-
-def crossover(selected_chromo, CHROMO_LEN, population):
-  offspring_cross = []
-  for i in range(int(POP_SIZE)):
-    parent1 = random.choice(selected_chromo)
-    parent2 = random.choice(population[:int(POP_SIZE*50)])
-
-    p1 = parent1[0]
-    p2 = parent2[0]
-
-    crossover_point = random.randint(1, CHROMO_LEN-1)
-    child =  p1[:crossover_point] + p2[crossover_point:]
-    offspring_cross.extend([child])
-  return offspring_cross
-
-#mutation
-
-def mutate(offspring, MUT_RATE):
-  mutated_offspring = []
-
-  for arr in offspring:
-      for i in range(len(arr)):
-          if random.random() < MUT_RATE:
-              arr[i] = random.choice(GENES)
-      mutated_offspring.append(arr)
-  return mutated_offspring
-
-#replacement
-
-def replace(new_gen, population):
-  for _ in range(len(population)):
-      if population[_][1] > new_gen[_][1]:
-        population[_][0] = new_gen[_][0]
-        population[_][1] = new_gen[_][1]
-  return population
-
-#main
-
-def main(POP_SIZE, MUT_RATE, TARGET, GENES):
-    # 1) initialize population
-    initial_population = initialize_pop(TARGET)
-    found = False
-    population = []
-    generation = 1
-
-    # 2) Calculating the fitness for the current population
-    for _ in range(len(initial_population)):
-        population.append(fitness_cal(TARGET, initial_population[_]))
-
-    # now population has 2 things, [chromosome, fitness]
-    # 3) now we loop until TARGET is found
-    while not found:
-
-      # 3.1) select best people from current population
-      selected = selection(population, TARGET)
-
-      # 3.2) mate parents to make new generation
-      population = sorted(population, key= lambda x:x[1])
-      crossovered = crossover(selected, len(TARGET), population)
-
-      # 3.3) mutating the children to diversify the new generation
-      mutated = mutate(crossovered, MUT_RATE)
-
-      new_gen = []
-      for _ in mutated:
-          new_gen.append(fitness_cal(TARGET, _))
-
-      # 3.4) replacement of bad population with new generation
-      # we sort here first to compare the least fit population with the most fit new_gen
-
-      population = replace(new_gen, population)
+pop_size = st.sidebar.number_input("Population Size", value=50, step=10)
+generations = st.sidebar.number_input("Generations", value=100, step=10)
 
 
-      if (population[0][1] == 0):
-        st.write('Target found')
-        st.write('String: ' + str(population[0][0]) + ' Generation: ' + str(generation) + ' Fitness: ' + str(population[0][1]))
-        break
-      st.write('String: ' + str(population[0][0]) + ' Generation: ' + str(generation) + ' Fitness: ' + str(population[0][1]))
-      generation+=1
-        
-with st.form("my_form"):
-    TARGET = st.text_input("Enter your name")
-    MUT_RATE = st.number_input("Enter your mutation rate")
-
-    calculate = st.form_submit_button("Calculate")
-
-    if calculate:
-        main(POP_SIZE, MUT_RATE, TARGET, GENES)
+# -----------------------------------------------------------------------------
+# 2. LOAD DATA
+# -----------------------------------------------------------------------------
+@st.cache_data
+def load_data():
+    return pd.read_csv("modified_ratings.csv")
 
 
+try:
+    df_ratings = load_data()
+    st.subheader("📊 Modified Rating Matrix")
+    st.dataframe(df_ratings, use_container_width=True)
+except Exception as e:
+    st.error(
+        f"Error loading 'modified_ratings.csv'. Ensure the file is pushed to your GitHub root folder. Details: {e}"
+    )
+    st.stop()
+
+# Extract matrix and program list
+program_names = df_ratings["Type of Program"].tolist()
+rating_matrix = df_ratings.drop(columns=["Type of Program"]).values
+num_programs, num_hours = rating_matrix.shape
+hours_list = df_ratings.columns[1:].tolist()
+
+# -----------------------------------------------------------------------------
+# 3. GENETIC ALGORITHM CORE FUNCTIONS
+# -----------------------------------------------------------------------------
 
 
+def calculate_fitness(chromosome):
+    """Fitness = total rating score achieved across all 18 hourly slots."""
+    total_score = 0
+    for hour_idx, prog_idx in enumerate(chromosome):
+        total_score += rating_matrix[prog_idx, hour_idx]
+    return total_score
+
+
+def create_initial_population(size):
+    return [
+        np.random.randint(0, num_programs, size=num_hours) for _ in range(size)
+    ]
+
+
+def selection(population, fitnesses):
+    """Tournament Selection."""
+    idx1, idx2 = np.random.choice(len(population), 2, replace=False)
+    return (
+        population[idx1].copy()
+        if fitnesses[idx1] >= fitnesses[idx2]
+        else population[idx2].copy()
+    )
+
+
+def crossover(parent1, parent2, crossover_rate):
+    if np.random.rand() < crossover_rate:
+        point = np.random.randint(1, num_hours)
+        child1 = np.concatenate([parent1[:point], parent2[point:]])
+        child2 = np.concatenate([parent2[:point], parent1[point:]])
+        return child1, child2
+    return parent1.copy(), parent2.copy()
+
+
+def mutate(chromosome, mutation_rate):
+    for i in range(len(chromosome)):
+        if np.random.rand() < mutation_rate:
+            chromosome[i] = np.random.randint(0, num_programs)
+    return chromosome
+
+
+def run_genetic_algorithm(pop_s, gens, co_rate, mut_rate):
+    population = create_initial_population(pop_s)
+    best_chromosome = None
+    best_fitness = -1
+
+    for g in range(gens):
+        fitnesses = [calculate_fitness(ind) for ind in population]
+
+        max_fit = max(fitnesses)
+        if max_fit > best_fitness:
+            best_fitness = max_fit
+            best_chromosome = population[np.argmax(fitnesses)].copy()
+
+        new_population = []
+        while len(new_population) < pop_s:
+            p1 = selection(population, fitnesses)
+            p2 = selection(population, fitnesses)
+            c1, c2 = crossover(p1, p2, co_rate)
+            c1 = mutate(c1, mut_rate)
+            c2 = mutate(c2, mut_rate)
+            new_population.extend([c1, c2])
+
+        population = new_population[:pop_s]
+
+    return best_chromosome, best_fitness
+
+
+# -----------------------------------------------------------------------------
+# 4. EXECUTION & DISPLAY
+# -----------------------------------------------------------------------------
+if st.button("🚀 Run Genetic Algorithm", type="primary"):
+    with st.spinner("Optimizing schedule..."):
+        best_schedule_indices, best_score = run_genetic_algorithm(
+            pop_size, generations, co_r, mut_r
+        )
+
+    st.success(
+        f"Optimization Complete! Best Total Rating Score: **{best_score:.2f}**"
+    )
+
+    scheduled_programs = [
+        program_names[idx] for idx in best_schedule_indices
+    ]
+    ratings_achieved = [
+        rating_matrix[idx, h] for h, idx in enumerate(best_schedule_indices)
+    ]
+
+    df_result = pd.DataFrame(
+        {
+            "Time Slot": hours_list,
+            "Scheduled Program": scheduled_programs,
+            "Rating Score": ratings_achieved,
+        }
+    )
+
+    st.subheader("📅 Generated Optimal TV Schedule")
+    st.table(df_result)
